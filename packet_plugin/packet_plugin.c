@@ -165,3 +165,12 @@ void packet_plugin_print_banner() {
         PLUGIN->print_banner(PLUGIN);
     } while ((plugin_info = plugin_info->next));
 }
+
+void packet_plugin_save_config() {
+    LIST_ELEMENT *plugin_info = g_active_packet_plugin_list;
+    if (g_active_packet_plugin_list == NULL) return;
+    do {
+        CHK_FUNC(PLUGIN->save_config);
+        PLUGIN->save_config(PLUGIN);
+    } while ((plugin_info = plugin_info->next));
+}
