@@ -1,6 +1,6 @@
 /*
  * MiniEAP configuration file parser
- * 
+ *
  * Configuration file consists of lines in the following format:
  *  KEY=VALUE
  * Comment lines must begin with #
@@ -20,27 +20,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static char* g_conf_file;
-static LIST_ELEMENT* g_conf_list;
-
 /*
- * These macros will change the ptr if they find what they want successfully
+ * There won't be many config entries,
+ * no need to use complex structure here.
  */
-#define FIND_NEXT_CHAR(start, ptr, chr, maxlen) \
-	do { \
-		char* tmp = ptr; \
-		for (ptr = start; ptr < start + maxlen && *ptr != chr; ptr++); \
-		if (*ptr != chr) ptr = tmp; \
-	} while (0);
+static LIST_ELEMENT* g_conf_list;
+static char* g_conf_file;
 
 /*
  * Find 1st non-space char, modify ptr if found
  */
 #define LTRIM(start, ptr, maxlen) \
 	do { \
-		char* tmp = ptr; \
 		for (ptr = start; ptr < start + maxlen && isspace(*ptr); ptr++); \
-		if (!isspace(*ptr)) ptr = tmp; \
 	} while (0);
 
 /*
@@ -52,7 +44,7 @@ static LIST_ELEMENT* g_conf_list;
 		char* tmp; \
 		int actual_len = strnlen(start, maxlen); \
 		for (tmp = start + actual_len - 1; tmp >= start && isspace(*tmp); tmp--); \
-		if (isspace(*tmp)) *tmp = 0; \
+		if (isspace(*(tmp + 1))) *(tmp + 1) = 0; \
 	} while (0);
 
 void conf_parser_set_file_path(char* path) {
@@ -80,8 +72,8 @@ RESULT conf_parser_parse_now() {
 		if (*start_pos == '#') {
 			continue;
 		}
-		FIND_NEXT_CHAR(start_pos, delim_pos, '=', line_len - (start_pos - line_buf));
-		if (delim_pos != start_pos) {
+		delim_pos = strchr(start_pos, '=');
+		if (delim_pos != NULL) {
 			// If delimiter is found
 			RTRIM(delim_pos, line_len - (delim_pos - line_buf));
 
@@ -95,7 +87,7 @@ RESULT conf_parser_parse_now() {
 			conf_pair->value = strndup(delim_pos + 1, line_len - (delim_pos - line_buf) - 1); // Without '='
 			insert_data(&g_conf_list, conf_pair);
 		} else {
-			PR_WARN("配置文件格式错误：%s", line_buf);
+			PR_WARN("配置文件行格式错误：%s", line_buf);
 		}
 	}
 
@@ -159,4 +151,14 @@ RESULT conf_parser_save_file() {
 	list_traverse(g_conf_list, conf_write_one_pair, fp);
 	fclose(fp);
 	return SUCCESS;
+}
+
+static void conf_free_one_pair(void* node, void* unused) {
+	chk_free((void**)&TO_CONFIG_PAIR(node)->key);
+	chk_free((void**)&TO_CONFIG_PAIR(node)->value);
+}
+
+void conf_parser_free() {
+	list_traverse(g_conf_list, conf_free_one_pair, NULL);
+	list_destory(&g_conf_list, TRUE);
 }

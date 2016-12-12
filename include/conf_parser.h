@@ -32,4 +32,9 @@ RESULT conf_parser_set_value(const char* key, const char* value);
  */
 RESULT conf_parser_save_file();
 
+/*
+ * Free the internal dictionary.
+ */
+void conf_parser_free()
+
 #endif
