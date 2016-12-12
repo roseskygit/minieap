@@ -259,16 +259,12 @@ RESULT parse_config_file(const char* filepath) {
     return SUCCESS;
 }
 
-static void save_one_packet_plugin(void* plugin_name, void* unused) {
-    conf_parser_add_value("module", plugin_name);
-}
-
 RESULT save_config_file() {
     char itoa_buf[10];
     conf_parser_add_value("username", g_eap_config.username);
     conf_parser_add_value("password", g_eap_config.password);
     conf_parser_add_value("nic", g_prog_config.ifname);
-    list_traverse(g_prog_config.packet_plugin_list, save_one_packet_plugin, NULL);
+    save_active_packet_plugin_list();
     conf_parser_add_value("daemonize", g_prog_config.run_in_background ? "3" : "0"); /* Why is there a "2"? */
     conf_parser_add_value("if-impl", get_if_impl()->name);
     conf_parser_add_value("max-fail", my_itoa(g_prog_config.max_failures, itoa_buf, 10));

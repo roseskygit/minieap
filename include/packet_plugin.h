@@ -143,6 +143,8 @@ typedef struct _packet_plugin {
 int init_packet_plugin_list();
 /* Add this plugin to the active plugin list. May add the same plugin twice */
 RESULT select_packet_plugin(const char* name);
+/* Save all active plugins' name to file */
+void save_active_packet_plugin_list();
 /*
  * The event dispatchers!
  * Normally they will notify all active plugins about these events,
