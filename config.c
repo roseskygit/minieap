@@ -180,6 +180,7 @@ static void parse_one_opt(const char* option, const char* argument) {
 RESULT parse_cmdline_opts(int argc, char* argv[]) {
     int opt = 0;
     int longIndex = 0;
+    int cmd_module_list_reset = FALSE;
     static const char* shortOpts = "-:hk::wu:p:n:t:r:l:x:b:c:z:j:";
     static const struct option longOpts[] = {
 	    { "help", no_argument, NULL, 'h' },
@@ -213,6 +214,19 @@ RESULT parse_cmdline_opts(int argc, char* argv[]) {
                 PR_ERR("缺少参数：%s", argv[optind - 1]);
                 return FAILURE;
                 break;
+            case 0:
+                if ((strcmp(longOpts[longIndex].name, "module") == 0 ||
+                    strcmp(longOpts[longIndex].name, "pkt-plugin") == 0)
+                    && cmd_module_list_reset == FALSE) {
+                    /* When there is at least one "--module" provided on the cmdline,
+                       give up all the plugins read from config file.
+                       Otherwise this would cause confusion / duplication.
+                       Do not free content here. This should be done in conf_parser_free()
+                     */
+                    list_destroy(&g_prog_config.packet_plugin_list, FALSE);
+                    cmd_module_list_reset = TRUE;
+                }
+                // fall thru
             default:
                 if (opt > 0) {
                     // Short options here. longIndex = 0 in this case.
