@@ -57,11 +57,11 @@ char* my_itoa(int val, char* buf, uint32_t radix) {
 
     char tmp;
     char* rev_pos = buf;
-    do { /* Reverse the buffer to get normal order */
+    while (rev_pos < curr_pos) { /* Reverse the buffer to get normal order */
         tmp = *curr_pos;
         *curr_pos-- = *rev_pos;
         *rev_pos++ = tmp;
-    } while (*rev_pos == 0);
+    };
 
     return buf;
 }
