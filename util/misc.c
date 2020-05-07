@@ -39,8 +39,8 @@ uint8_t char2hex(const char* str) {
 
 void hex2char(uint8_t hex, char* out) {
 #define HEX2LOWER(digit) (((digit) >= 0xa) ? ((digit) - 0xa + 'a') : ((digit) + '0'))
-    out[0] = HEX2LOWER(hex & 0xf);
-    out[1] = HEX2LOWER((hex & 0xf0) >> 4);
+    out[0] = HEX2LOWER((hex & 0xf0) >> 4);
+    out[1] = HEX2LOWER(hex & 0xf);
 }
 
 char* my_itoa(int val, char* buf, uint32_t radix) {
@@ -90,7 +90,7 @@ uint8_t bit_reverse(uint8_t in) {
 void gbk2utf8(char* in, size_t inlen, char* out, size_t outlen) {
 #ifdef ENABLE_ICONV
     iconv_t _cd = iconv_open("utf-8", "gbk");
-    if (_cd < 0) {
+    if (_cd == NULL) {
         PR_WARN("无法从 iconv 获取编码描述符，服务器消息可能会出现乱码");
         memmove(out, in, inlen);
     } else {
@@ -98,7 +98,7 @@ void gbk2utf8(char* in, size_t inlen, char* out, size_t outlen) {
         iconv_close(_cd);
     }
 #elif defined(ENABLE_GBCONV)
-    gbconv8(in, out, outlen);
+    gbconv8(in, inlen, out, outlen);
 #else
     memmove(out, in, inlen);
 #endif
@@ -108,7 +108,7 @@ void pr_info_gbk(char* in, size_t inlen) {
     size_t _utf8_size = inlen << 2;
     char* _utf8_buf = (char*)malloc(_utf8_size);
     memset(_utf8_buf, 0, _utf8_size);
-    if (_utf8_buf > 0) {
+    if (_utf8_buf != NULL) {
         gbk2utf8(in, inlen, _utf8_buf, _utf8_size);
         PR_INFO("%s", _utf8_buf);
         free(_utf8_buf);
@@ -136,7 +136,7 @@ char** strarraydup(int count, char* array[]) {
     if (array == 0) return NULL;
 
     char** _ret = (char**)malloc(count * sizeof(char*));
-    if (_ret < 0) {
+    if (_ret == NULL) {
         PR_ERR("无法为命令行选项创建缓冲区");
         return NULL;
     }
@@ -174,9 +174,9 @@ void* memdup(const void* src, int n) {
 
     void* ret = malloc(n);
 
-    if (ret <= 0) {
-        // Suggest this is an error. THIS IS NON STANDARD
-        return (void*)-1;
+    if (ret == NULL) {
+        // Suggest this is an error.
+        return NULL;
     }
 
     memmove(ret, src, n);

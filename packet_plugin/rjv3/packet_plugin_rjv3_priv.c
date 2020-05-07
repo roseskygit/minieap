@@ -12,6 +12,8 @@
 #include "misc.h"
 #include "eap_state_machine.h"
 #include "sched_alarm.h"
+#include "rjcrc16.h"
+#include "rjencode.h"
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -26,45 +28,6 @@
 #ifdef __linux__
 #include <linux/hdreg.h>
 #endif
-
-/*
- * Headers before the fields
- */
-static uint8_t pkt_start_priv_header[] = {
-                0xff, 0xff, 0x37, 0x77, 0x7f, 0xff, /*   ..7w.I */ /* Would be different in second auth */
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, /* Pv4NMSKG */ /* IPv4, NetMaSK, GaTeWaY, Primary DNS */
-    0xff, 0xff, 0xff, 0xac, 0xb1, 0xff, 0xb0, 0xb0, /* TWYPDNS. */
-    0x2d, 0x00, 0x00, 0x13, 0x11, 0x38, 0x30, 0x32, /* -....802 */
-    0x31, 0x78, 0x2e, 0x65, 0x78, 0x65, 0x00, 0x00, /* 1x.exe.. */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, /* ........ */
-//    0x02, 0x00, 0x00, 0x00, 0x13, 0x11, 0x01, 0xb1, /* ........ */
-};
-
-static uint8_t pkt_identity_priv_header[] = {
-                0xff, 0xff, 0x37, 0x77, 0x7f, 0xff, /*   ..7w.. */ /* Would be different in second auth */
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, /* ........ */
-    0xff, 0xff, 0xff, 0xac, 0xb1, 0xff, 0xb0, 0xb0, /* ........ */
-    0x2d, 0x00, 0x00, 0x13, 0x11, 0x38, 0x30, 0x32, /* -....802 */
-    0x31, 0x78, 0x2e, 0x65, 0x78, 0x65, 0x00, 0x00, /* 1x.exe.. */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, /* ........ */
-//    0x02, 0x00, 0x00, 0x00, 0x13, 0x11, 0x01, 0xb1, /* ........ */
-};
-
-static uint8_t pkt_challenge_priv_header[] = {
-                0xff, 0xff, 0x37, 0x77, 0x7f, 0xff, /*   ..7w.. */ /* Would be different in second auth */
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, /* ........ */
-    0xff, 0xff, 0xff, 0xac, 0xb1, 0xff, 0xb0, 0xb0, /* ........ */
-    0x2d, 0x00, 0x00, 0x13, 0x11, 0x38, 0x30, 0x32, /* -....802 */
-    0x31, 0x78, 0x2e, 0x65, 0x78, 0x65, 0x00, 0x00, /* 1x.exe.. */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* ........ */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, /* ........ */
-//    0x02, 0x00, 0x00, 0x00, 0x13, 0x11, 0x01, 0xc1, /* ........ */
-};
 
 #define IS_MD5_FRAME(frame) \
     (frame != NULL && frame->header->eapol_hdr.type[0] == EAP_PACKET \
@@ -142,7 +105,7 @@ static void rjv3_set_v3_hash(uint8_t* hash_buf, ETH_EAP_FRAME* request) {
 
 static void rjv3_set_service_name(uint8_t* name_buf, char* cmd_opt) {
     memmove(name_buf, cmd_opt, strlen(cmd_opt));
-};
+}
 
 static void rjv3_set_secondary_dns(char* dns_ascii_buf, char* fake_dns) {
     if (fake_dns != NULL) {
@@ -176,7 +139,7 @@ static void rjv3_set_hdd_serial(uint8_t* serial_buf, char* fake_serial) {
     char* _root_dev = NULL;
     char* _ret;
 
-    if (_fp <= 0) {
+    if (_fp == NULL) {
         goto info_err;
     }
 
@@ -214,7 +177,7 @@ static void rjv3_set_hdd_serial(uint8_t* serial_buf, char* fake_serial) {
 info_err:
     PR_ERRNO("无法从 /etc/mtab 获取根分区挂载设备信息，请使用 --fake-serial 选项手动指定硬盘序列号");
 close_return:
-    if (_fp > 0) fclose(_fp);
+    if (_fp != NULL) fclose(_fp);
     if (_root_dev) free(_root_dev);
 #endif // TODO macOS ioreg?
     return;
@@ -222,24 +185,7 @@ close_return:
 
 #define PRIV ((rjv3_priv*)(this->priv))
 
-static void set_ipv4_priv_header(uint8_t* ipv4_buf, int offset) {
-    pkt_start_priv_header[offset] = bit_reverse(~ipv4_buf[0]);
-    pkt_start_priv_header[offset + 1] = bit_reverse(~ipv4_buf[1]);
-    pkt_start_priv_header[offset + 2] = bit_reverse(~ipv4_buf[2]);
-    pkt_start_priv_header[offset + 3] = bit_reverse(~ipv4_buf[3]);
-
-    pkt_identity_priv_header[offset] = bit_reverse(~ipv4_buf[0]);
-    pkt_identity_priv_header[offset + 1] = bit_reverse(~ipv4_buf[1]);
-    pkt_identity_priv_header[offset + 2] = bit_reverse(~ipv4_buf[2]);
-    pkt_identity_priv_header[offset + 3] = bit_reverse(~ipv4_buf[3]);
-
-    pkt_challenge_priv_header[offset] = bit_reverse(~ipv4_buf[0]);
-    pkt_challenge_priv_header[offset + 1] = bit_reverse(~ipv4_buf[1]);
-    pkt_challenge_priv_header[offset + 2] = bit_reverse(~ipv4_buf[2]);
-    pkt_challenge_priv_header[offset + 3] = bit_reverse(~ipv4_buf[3]);
-}
-
-static RESULT rjv3_override_priv_header(struct _packet_plugin* this) {
+static RESULT rjv3_get_dhcp_lease(struct _packet_plugin* this, DHCP_LEASE* lease) {
     IF_IMPL* _if = get_if_impl();
     if (_if == NULL) return FAILURE;
     char _ifname[IFNAMSIZ] = {0};
@@ -282,10 +228,10 @@ static RESULT rjv3_override_priv_header(struct _packet_plugin* this) {
             goto fail;
     }
 
-    set_ipv4_priv_header(_ipv4->ip, 5);
-    set_ipv4_priv_header(_ipv4->mask, 9);
-    set_ipv4_priv_header(_gw.ip, 13);
-    set_ipv4_priv_header(_dns1.ip, 17);
+    *(uint32_t*)&lease->ip = *(uint32_t*)&_ipv4->ip;
+    *(uint32_t*)&lease->netmask = *(uint32_t*)&_ipv4->mask;
+    *(uint32_t*)&lease->gateway = *(uint32_t*)&_gw.ip;
+    *(uint32_t*)&lease->dns = *(uint32_t*)&_dns1.ip;
 
     free_ip_list(&_ip_list);
     free_dns_list(&_dns_list);
@@ -334,7 +280,7 @@ static int rjv3_append_common_fields(PACKET_PLUGIN* this, LIST_ELEMENT** list, i
     uint8_t _hdd_ser[RJV3_SIZE_HDD_SER] = {0};
     /* misc 6 */
     uint8_t _misc_7[RJV3_SIZE_MISC_7] = {0};
-    uint8_t _misc_8[RJV3_SIZE_MISC_8] = {0x40};
+    uint8_t _os_bits[RJV3_SIZE_OS_BITS] = {0x40};
     char* _ver_str = PRIV->ver_str;
 
     rjv3_set_dhcp_en(_dhcp_en, PRIV->dhcp_type);
@@ -380,36 +326,45 @@ static int rjv3_append_common_fields(PACKET_PLUGIN* this, LIST_ELEMENT** list, i
     CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_HDD_SER,  _hdd_ser,               sizeof(_hdd_ser)));
     CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_MISC_6,   NULL,                   0));
     CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_MISC_7,   _misc_7,                sizeof(_misc_7)));
-    CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_MISC_8,   _misc_8,                sizeof(_misc_8)));
+    CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_OS_BITS,  _os_bits,               sizeof(_os_bits)));
     CHK_ADD(append_rjv3_prop(list, RJV3_TYPE_VER_STR,  (uint8_t*)_ver_str,    strlen(_ver_str) + 1)); // Zero terminated
 
     return _len;
 }
 
+static int rjv3_should_fill_dhcp_prop(struct _packet_plugin* this) {
+    return (PRIV->dhcp_type == DHCP_BEFORE_AUTH) ||
+            (PRIV->dhcp_type == DHCP_DOUBLE_AUTH && PRIV->succ_count >= 2);
+}
+
 /* The bytes containing twisted IPv4 addresses */
 static void rjv3_append_priv_header(struct _packet_plugin* this, ETH_EAP_FRAME* frame) {
-    EAPOL_TYPE _eapol_type = frame->header->eapol_hdr.type[0];
-    switch (_eapol_type) {
-        case EAPOL_START:
-            append_to_frame(frame, pkt_start_priv_header, sizeof(pkt_start_priv_header));
-            break;
-        case EAP_PACKET:
-            if (frame->header->eap_hdr.code[0] == EAP_RESPONSE) {
-                switch (frame->header->eap_hdr.type[0]) {
-                    case IDENTITY:
-                        append_to_frame(frame, pkt_identity_priv_header,
-                                            sizeof(pkt_identity_priv_header));
-                        break;
-                    case MD5_CHALLENGE:
-                        append_to_frame(frame, pkt_challenge_priv_header,
-                                            sizeof(pkt_challenge_priv_header));
-                        break;
-                }
-            }
-            break;
-        default:
-            break;
+    DHCP_INFO_PROP _dhcp_prop = {0};
+
+    _dhcp_prop.magic[0] = 0x00;
+    _dhcp_prop.magic[1] = 0x00;
+    _dhcp_prop.magic[2] = 0x13;
+    _dhcp_prop.magic[3] = 0x11;
+
+    _dhcp_prop.dhcp_enabled = (PRIV->dhcp_type != DHCP_NONE);
+
+    if (rjv3_should_fill_dhcp_prop(this)) {
+        rjv3_get_dhcp_lease(this, &_dhcp_prop.lease);
     }
+
+    *(uint16_t*)&_dhcp_prop.crc16_hash = htons(crc16((uint8_t*)&_dhcp_prop, 21));
+
+    rj_encode((uint8_t*)&_dhcp_prop, sizeof(_dhcp_prop));
+    append_to_frame(frame, (uint8_t*)&_dhcp_prop, sizeof(_dhcp_prop));
+
+    uint8_t _magic[4] = {0x00, 0x00, 0x13, 0x11};
+    append_to_frame(frame, _magic, sizeof(_magic));
+
+    uint8_t _prog_name[RJV3_SIZE_PROG_NAME] = RJV3_PROG_NAME;
+    append_to_frame(frame, _prog_name, sizeof(_prog_name));
+
+    uint8_t _version[4] = {0x01, 0x1f, 0x01, 0x02}; /* May be different */
+    append_to_frame(frame, _version, sizeof(_version));
 }
 
 /* Append everything proprietary */
@@ -461,22 +416,16 @@ RESULT rjv3_append_priv(struct _packet_plugin* this, ETH_EAP_FRAME* frame) {
     }
 
     /* The outside */
-    RJ_PROP* _container_prop = new_rjv3_prop();
-    if (_container_prop < 0) {
-        destroy_rjv3_prop_list(&_prop_list);
-        return FAILURE;
-    }
+    /* logoffReason(1) magic(4) length(2) */
+    uint8_t _header[7] = {0x00, 0x00, 0x00, 0x13, 0x11, 0x00, 0x00};
+    _header[5] = (_props_len >> 8 & 0xff);
+    _header[6] = (_props_len & 0xff);
 
-    _container_prop->header1.header_type = 0x02;
-    _container_prop->header1.header_len = 0x00;
-    _container_prop->header2.type = (_props_len >> 8 & 0xff);
-    _container_prop->header2.len = (_props_len & 0xff);
-    _container_prop->content = _std_prop_buf;
+    append_to_frame(frame, _header, sizeof(_header));
 
-    append_rjv3_prop_to_frame(_container_prop, frame);
+    append_to_frame(frame, _std_prop_buf, _props_len);
 
     destroy_rjv3_prop_list(&_prop_list);
-    free(_container_prop);
     return SUCCESS;
 }
 
@@ -547,8 +496,12 @@ RESULT rjv3_process_result_prop(ETH_EAP_FRAME* frame) {
 
 void rjv3_start_secondary_auth(void* vthis) {
     PACKET_PLUGIN* this = (PACKET_PLUGIN*)vthis;
+    DHCP_LEASE _tmp_dhcp_lease = {0};
 
-    if (IS_FAIL(rjv3_override_priv_header(this))) {
+    /* Try to fill out lease info to determine whether DHCP finished.
+     * The addresses in lease info are not used here.
+     */
+    if (IS_FAIL(rjv3_get_dhcp_lease(this, &_tmp_dhcp_lease))) {
         PRIV->dhcp_count++;
         if (PRIV->dhcp_count > PRIV->max_dhcp_count) {
             rjv3_process_result_prop(PRIV->last_recv_packet); // Loads of texts
@@ -566,12 +519,4 @@ void rjv3_start_secondary_auth(void* vthis) {
         switch_to_state(EAP_STATE_START_SENT, NULL);
         return;
     }
-}
-
-void rjv3_reset_priv_header() {
-    uint8_t _empty[] = {0x00, 0x00, 0x00, 0x00};
-    set_ipv4_priv_header(_empty, 5);
-    set_ipv4_priv_header(_empty, 9);
-    set_ipv4_priv_header(_empty, 13);
-    set_ipv4_priv_header(_empty, 17);
 }

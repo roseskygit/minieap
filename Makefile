@@ -1,7 +1,7 @@
 include config.mk
 
 #### Populate [C|LD]FLAGS ####
-COMMON_CFLAGS := $(CUSTOM_CFLAGS) $(CFLAGS) -Wall -D_GNU_SOURCE
+COMMON_CFLAGS := $(CUSTOM_CFLAGS) $(CFLAGS) -Wall -Wpedantic -D_GNU_SOURCE
 COMMON_LDFLAGS := $(CUSTOM_LDFLAGS) $(LDFLAGS)
 LIBS += $(CUSTOM_LIBS)
 
@@ -48,16 +48,50 @@ minieap: $(BUILD_MODULES)
         $(LIBS)
 
 .PHONY: clean
-clean: $(addsuffix _clean,$(BUILD_MODULES))
+clean:
+	rm -f minieap.service minieap.1.gz
 
 define my-dir
 $(dir $(lastword $(MAKEFILE_LIST)))
 endef
 
 define all-c-files-under
-$(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/$(1)/*.c))
+$(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/$(1)$(if $(1),/,)*.c))
 endef
 
 APPEND := $(shell pwd)/append.mk
 MK_LIST := $(shell find . -name minieap.mk)
 include $(MK_LIST)
+
+#### Install ####
+
+DESTDIR ?=
+PREFIX ?= /usr/local
+BINDIR ?= /sbin
+SYSCONFDIR ?= /etc
+SYSTEMDDIR ?= $(SYSCONFDIR)/systemd
+
+minieap.%: minieap.%.in
+	sed "s|:TARGET:|$(PREFIX)$(BINDIR)|g;s|:SYSCONFDIR:|$(SYSCONFDIR)|g" $< > $@
+
+minieap.1.gz: minieap.1
+	gzip -k $<
+
+.PHONY: install
+install: minieap minieap.1.gz minieap.service
+	install -d $(DESTDIR)$(PREFIX)$(BINDIR)/
+	install -m 755 minieap $(DESTDIR)$(PREFIX)$(BINDIR)/
+	install -d $(DESTDIR)$(SYSCONFDIR)/
+	install -m 644 minieap.conf $(DESTDIR)$(SYSCONFDIR)/
+	install -d $(DESTDIR)$(PREFIX)/share/man/man1/
+	install -m 644 minieap.1.gz $(DESTDIR)$(PREFIX)/share/man/man1/
+	install -d $(DESTDIR)$(SYSTEMDDIR)/system/
+	install -m 644 minieap.service $(DESTDIR)$(SYSTEMDDIR)/system/
+	-systemctl enable minieap
+
+.PHONY: uninstall
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)$(BINDIR)/minieap
+	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/minieap.1.gz
+	-systemctl disable minieap
+	rm -f $(DESTDIR)$(SYSTEMDDIR)/system/minieap.service

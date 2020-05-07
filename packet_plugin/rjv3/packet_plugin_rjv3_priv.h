@@ -19,7 +19,7 @@
 #define RJV3_TYPE_SEC_DNS   0x76 /* Secondary DNS in resolv.conf, in ASCII, no termination char*/
 /* Var size */
 
-#define RJV3_TYPE_MISC_2    0x35 /* 0x03 */
+#define RJV3_TYPE_MISC_2    0x35 /* 0x01 IPv6 count? */
 #define RJV3_SIZE_MISC_2    0x01
 
 #define RJV3_TYPE_LL_IPV6   0x36 /* Link-local IPv6 in binary, SLAAC */
@@ -42,17 +42,20 @@
 #define RJV3_TYPE_HDD_SER   0x54 /* Primary hard disk serial number in ASCII */
 #define RJV3_SIZE_HDD_SER   0x40 /* Fixed size char array, filled by 0 */
 
-#define RJV3_TYPE_MISC_6    0x55
+#define RJV3_TYPE_MISC_6    0x55 /* SecDomainName */
 #define RJV3_SIZE_MISC_6    0x00 /* Null field */
 
-#define RJV3_TYPE_MISC_7    0x62 /* 0x00 */
+#define RJV3_TYPE_MISC_7    0x62 /* SecCheckResult 0x00 */
 #define RJV3_SIZE_MISC_7    0x01
 
-#define RJV3_TYPE_MISC_8    0x70 /* 0x40 */
-#define RJV3_SIZE_MISC_8    0x01
+#define RJV3_TYPE_OS_BITS   0x70 /* Client OS bits 32bit=0x20 64bit=0x40 */
+#define RJV3_SIZE_OS_BITS   0x01
 
 #define RJV3_TYPE_VER_STR   0x6f /* Client version string, zero terminated */
 /* Var size */
+
+#define RJV3_PROG_NAME      "8021x.exe" /* Program name in header */
+#define RJV3_SIZE_PROG_NAME 0x20
 
 typedef enum _rj_broadcast_addr {
     BROADCAST_STANDARD,
@@ -87,6 +90,20 @@ typedef struct _rj_prop {
     uint8_t* content; /* Length is included in header */
 } RJ_PROP;
 
+typedef struct _dhcp_lease {
+    uint8_t ip[4];
+    uint8_t netmask[4];
+    uint8_t gateway[4];
+    uint8_t dns[4];
+} DHCP_LEASE;
+
+typedef struct _dhcp_info_prop {
+    uint8_t magic[4]; /* 00 00 13 11 */
+    uint8_t dhcp_enabled; /* dhcp_type == 1 */
+    DHCP_LEASE lease;
+    uint8_t crc16_hash[2]; /* Network byte order */
+} DHCP_INFO_PROP;
+
 typedef struct _packet_plugin_rjv3_priv {
     struct { // Cmdline options
         int heartbeat_interval;
@@ -111,5 +128,4 @@ typedef struct _packet_plugin_rjv3_priv {
 RESULT rjv3_append_priv(struct _packet_plugin* this, ETH_EAP_FRAME* frame);
 RESULT rjv3_process_result_prop(ETH_EAP_FRAME* frame);
 void rjv3_start_secondary_auth(void* vthis);
-void rjv3_reset_priv_header();
 #endif
